@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Spin, message } from 'antd';
+import { Alert, App, Button, Spin, message } from 'antd';
 import {
   BulbOutlined,
   HistoryOutlined,
@@ -59,6 +59,7 @@ function getStoredPreferences(): LocalPreferences {
 }
 
 export default function ChatPage() {
+  const { modal } = App.useApp();
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -306,6 +307,39 @@ export default function ChatPage() {
     setCurrentSession(null);
   }, []);
 
+  const confirmOfficeExecution = useCallback(
+    async (planSummary: string, operationCount: number) => {
+      return new Promise<boolean>((resolve) => {
+        let settled = false;
+
+        modal.confirm({
+          title: 'Apply document changes?',
+          centered: true,
+          okText: 'Apply',
+          cancelText: 'Cancel',
+          content: (
+            <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+              <div>{planSummary}</div>
+              <div>
+                This will apply {operationCount} document operation{operationCount === 1 ? '' : 's'}.
+              </div>
+            </div>
+          ),
+          onOk: () => {
+            settled = true;
+            resolve(true);
+          },
+          onCancel: () => {
+            if (!settled) {
+              resolve(false);
+            }
+          },
+        });
+      });
+    },
+    [modal]
+  );
+
   const sendMessage = useCallback(
     async (content: string) => {
       if (!selectedProviderId || !selectedModelId) {
@@ -448,11 +482,7 @@ export default function ChatPage() {
           const requiresConfirmation = shouldConfirmAgentActions || shouldConfirmOfficeExecution(plan);
           const confirmed =
             !requiresConfirmation ||
-            window.confirm(
-              `${plan.summary}\n\nApply ${plan.operations.length} document operation${
-                plan.operations.length === 1 ? '' : 's'
-              } now?`
-            );
+            (await confirmOfficeExecution(plan.summary, plan.operations.length));
 
           if (!confirmed) {
             setMessages((prev) => [
@@ -527,6 +557,7 @@ export default function ChatPage() {
     [
       activeInstructionIds,
       currentSession,
+      confirmOfficeExecution,
       documentInfo,
       ensureSession,
       manualOverrides,

@@ -30,7 +30,12 @@ Available Word operations:
 - word.search_replace: { "type": "word.search_replace", "search": "...", "replace": "..." }
 - word.select_text: { "type": "word.select_text", "search": "anchor text" }
 - word.format_selection: { "type": "word.format_selection", "format": { "bold": true, "italic": false, "underline": false, "fontSize": 14, "fontColor": "#0f172a", "highlightColor": "#fef08a" } }
-- word.apply_style: { "type": "word.apply_style", "style": "normal|heading1|heading2|title|quote|emphasis" }`;
+- word.apply_style: { "type": "word.apply_style", "style": "normal|heading1|heading2|title|quote|emphasis" }
+- word.apply_paragraph_style: { "type": "word.apply_paragraph_style", "style": "normal|heading1|heading2|heading3|title|quote|list" }
+- word.format_paragraph: { "type": "word.format_paragraph", "format": { "alignment": "Center", "leftIndent": 12, "rightIndent": 12, "firstLineIndent": 18, "spaceBefore": 6, "spaceAfter": 6, "lineSpacing": 1.5 } }
+- word.read_table_cell: { "type": "word.read_table_cell", "tableIndex": 0, "rowIndex": 1, "columnIndex": 2 }
+- word.write_table_cell: { "type": "word.write_table_cell", "tableIndex": 0, "rowIndex": 1, "columnIndex": 2, "text": "..." }
+- word.format_table_cell: { "type": "word.format_table_cell", "tableIndex": 0, "rowIndex": 1, "columnIndex": 2, "format": { "bold": true, "fillColor": "#dbeafe", "horizontalAlignment": "Center" } }`;
   }
 
   if (documentType === 'excel') {
@@ -42,7 +47,12 @@ Available Excel operations:
 - excel.clear_range: { "type": "excel.clear_range", "sheetName": "Sheet1", "range": "B2:D20" }
 - excel.insert_formula: { "type": "excel.insert_formula", "sheetName": "Sheet1", "cell": "E2", "formula": "=SUM(B2:D2)" }
 - excel.format_range: { "type": "excel.format_range", "sheetName": "Sheet1", "range": "A1:E1", "format": { "bold": true, "fontColor": "#0f172a", "fillColor": "#dbeafe", "horizontalAlignment": "Center" } }
-- excel.autofit_range: { "type": "excel.autofit_range", "sheetName": "Sheet1", "range": "A:E" }`;
+- excel.autofit_range: { "type": "excel.autofit_range", "sheetName": "Sheet1", "range": "A:E" }
+- excel.set_number_format: { "type": "excel.set_number_format", "sheetName": "Sheet1", "range": "B2:B20", "numberFormat": "$#,##0.00" }
+- excel.set_borders: { "type": "excel.set_borders", "sheetName": "Sheet1", "range": "A1:E10", "format": { "style": "Continuous", "color": "#94a3b8" } }
+- excel.resize_range: { "type": "excel.resize_range", "sheetName": "Sheet1", "range": "A:E", "size": { "columnWidth": 18, "rowHeight": 24, "wrapText": true } }
+- excel.merge_range: { "type": "excel.merge_range", "sheetName": "Sheet1", "range": "A1:E1" }
+- excel.unmerge_range: { "type": "excel.unmerge_range", "sheetName": "Sheet1", "range": "A1:E1" }`;
   }
 
   return `${shared}

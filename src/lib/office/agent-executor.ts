@@ -8,16 +8,26 @@ import {
   excelInsertFormula,
   excelReadRange,
   excelSetActiveWorksheet,
+  excelSetRangeBorders,
+  excelSetRangeNumberFormat,
+  excelMergeRange,
+  excelResizeRange,
+  excelUnmergeRange,
   excelWriteRange,
   getHostType,
+  wordApplyParagraphStyle,
   wordApplyStylePreset,
   wordDeleteSelection,
   wordFormatSelection,
+  wordFormatParagraph,
+  wordFormatTableCell,
   wordInsertParagraph,
   wordInsertText,
+  wordReadTableCell,
   wordReplaceSelection,
   wordSearchAndReplace,
   wordSelectText,
+  wordWriteTableCell,
 } from '@/lib/office/operations';
 
 type WordOperation =
@@ -61,6 +71,48 @@ type WordOperation =
   | {
       type: 'word.apply_style';
       style: 'normal' | 'heading1' | 'heading2' | 'title' | 'quote' | 'emphasis';
+    }
+  | {
+      type: 'word.apply_paragraph_style';
+      style: 'normal' | 'heading1' | 'heading2' | 'heading3' | 'title' | 'quote' | 'list';
+    }
+  | {
+      type: 'word.format_paragraph';
+      format: {
+        alignment?: 'Left' | 'Center' | 'Right' | 'Justify';
+        leftIndent?: number;
+        rightIndent?: number;
+        firstLineIndent?: number;
+        spaceBefore?: number;
+        spaceAfter?: number;
+        lineSpacing?: number;
+      };
+    }
+  | {
+      type: 'word.read_table_cell';
+      tableIndex: number;
+      rowIndex: number;
+      columnIndex: number;
+    }
+  | {
+      type: 'word.write_table_cell';
+      tableIndex: number;
+      rowIndex: number;
+      columnIndex: number;
+      text: string;
+    }
+  | {
+      type: 'word.format_table_cell';
+      tableIndex: number;
+      rowIndex: number;
+      columnIndex: number;
+      format: {
+        bold?: boolean;
+        italic?: boolean;
+        fontColor?: string;
+        fillColor?: string;
+        horizontalAlignment?: 'Left' | 'Center' | 'Right';
+      };
     };
 
 type ExcelOperation =
@@ -104,6 +156,41 @@ type ExcelOperation =
     }
   | {
       type: 'excel.autofit_range';
+      sheetName: string;
+      range: string;
+    }
+  | {
+      type: 'excel.set_number_format';
+      sheetName: string;
+      range: string;
+      numberFormat: string;
+    }
+  | {
+      type: 'excel.set_borders';
+      sheetName: string;
+      range: string;
+      format: {
+        color?: string;
+        style?: string;
+      };
+    }
+  | {
+      type: 'excel.resize_range';
+      sheetName: string;
+      range: string;
+      size: {
+        rowHeight?: number;
+        columnWidth?: number;
+        wrapText?: boolean;
+      };
+    }
+  | {
+      type: 'excel.merge_range';
+      sheetName: string;
+      range: string;
+    }
+  | {
+      type: 'excel.unmerge_range';
       sheetName: string;
       range: string;
     };
@@ -235,6 +322,21 @@ export async function executeOfficeExecutionPlan(
       case 'word.apply_style':
         result = await wordApplyStylePreset(operation.style);
         break;
+      case 'word.apply_paragraph_style':
+        result = await wordApplyParagraphStyle(operation.style);
+        break;
+      case 'word.format_paragraph':
+        result = await wordFormatParagraph(operation.format);
+        break;
+      case 'word.read_table_cell':
+        result = await wordReadTableCell(operation.tableIndex, operation.rowIndex, operation.columnIndex);
+        break;
+      case 'word.write_table_cell':
+        result = await wordWriteTableCell(operation.tableIndex, operation.rowIndex, operation.columnIndex, operation.text);
+        break;
+      case 'word.format_table_cell':
+        result = await wordFormatTableCell(operation.tableIndex, operation.rowIndex, operation.columnIndex, operation.format);
+        break;
       case 'excel.set_active_sheet':
         result = await excelSetActiveWorksheet(operation.sheetName);
         break;
@@ -255,6 +357,21 @@ export async function executeOfficeExecutionPlan(
         break;
       case 'excel.autofit_range':
         result = await excelAutofitRange(operation.sheetName, operation.range);
+        break;
+      case 'excel.set_number_format':
+        result = await excelSetRangeNumberFormat(operation.sheetName, operation.range, operation.numberFormat);
+        break;
+      case 'excel.set_borders':
+        result = await excelSetRangeBorders(operation.sheetName, operation.range, operation.format);
+        break;
+      case 'excel.resize_range':
+        result = await excelResizeRange(operation.sheetName, operation.range, operation.size);
+        break;
+      case 'excel.merge_range':
+        result = await excelMergeRange(operation.sheetName, operation.range);
+        break;
+      case 'excel.unmerge_range':
+        result = await excelUnmergeRange(operation.sheetName, operation.range);
         break;
       default:
         result = {

@@ -6,6 +6,8 @@ Included work:
 - Added changelog POST support for applied document operations.
 - Redesigned provider model selection with search, filtering, select-all, clear, and simpler default-model controls.
 - Improved light-theme readability across settings cards, inputs, chips, message surfaces, and Ant Design component tokens.
+- Replaced the remaining native browser confirmation with Ant Design modal confirmation.
+- Added more precise Word table cell, paragraph style, paragraph formatting, and Excel range border/format/resize/merge tools.
 
 Validation:
 - Production build completed successfully with `npm run build`.
