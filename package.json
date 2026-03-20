@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "next dev",
+    "dev:https": "next dev --port 3000 --experimental-https",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -15,6 +16,7 @@
   "type": "commonjs",
   "dependencies": {
     "@ant-design/icons": "^5.6.1",
+    "@tailwindcss/typography": "^0.5.19",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.0",
     "@types/react": "^18.3.28",
@@ -27,6 +29,8 @@
     "postcss": "^8.5.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3",
     "uuid": "^13.0.0"

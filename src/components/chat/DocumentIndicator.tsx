@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Tag } from 'antd';
+import { Tag, Button, Dropdown } from 'antd';
 import {
   FileWordOutlined,
   FileExcelOutlined,
@@ -20,18 +20,46 @@ const iconMap: Record<string, React.ReactNode> = {
 };
 
 export default function DocumentIndicator({ documentInfo }: DocumentIndicatorProps) {
-  const icon = documentInfo ? (iconMap[documentInfo.type] || <FileOutlined />) : <FileOutlined />;
-  const name = documentInfo?.name || 'No document';
+  const icon = documentInfo ? iconMap[documentInfo.type] || <FileOutlined /> : <FileOutlined />;
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-[18px] bg-white/70 px-3 py-2 shadow-sm ring-1 ring-black/5">
-      <div className="flex min-w-0 items-center gap-2 text-xs text-slate-600">
-        <span className="text-sm text-sky-500">{icon}</span>
-        <span className="truncate font-medium text-slate-700">{name}</span>
-      </div>
-      <Tag className="!m-0 capitalize" color="blue">
-        {documentInfo?.type || 'offline'}
-      </Tag>
-    </div>
+    <Dropdown
+      trigger={['click']}
+      placement="bottomLeft"
+      dropdownRender={() => (
+        <div className="w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            Document
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xl text-blue-500">{icon}</span>
+            <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
+              {documentInfo?.name || 'No Office document'}
+            </span>
+          </div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            {documentInfo
+              ? 'Attached to current chat context.'
+              : 'Open from Word, Excel, or PowerPoint to attach context.'}
+          </div>
+          <div className="mt-3">
+            <Tag color={documentInfo ? 'blue' : 'default'} className="capitalize !m-0">
+              {documentInfo?.type || 'offline'}
+            </Tag>
+          </div>
+        </div>
+      )}
+    >
+      <Button 
+        type="text" 
+        size="small" 
+        icon={icon}
+        className="flex items-center gap-2 text-slate-600 dark:text-slate-400"
+      >
+        <span className="truncate max-w-[120px]">
+          {documentInfo?.name || 'No Document'}
+        </span>
+      </Button>
+    </Dropdown>
   );
 }

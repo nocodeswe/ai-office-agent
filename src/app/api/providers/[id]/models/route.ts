@@ -6,6 +6,7 @@ import {
   createModel,
 } from '@/lib/db/dal';
 import { createProvider } from '@/lib/providers';
+import { enrichModel } from '@/lib/model-catalog';
 
 export async function GET(
   _request: NextRequest,
@@ -27,11 +28,16 @@ export async function GET(
       savedModels.map((model) => [model.modelId, model.enabled])
     );
 
-    const models = remoteModels.map((model) => ({
-      modelId: model.id,
-      name: model.name,
-      enabled: enabledByModelId.get(model.id) ?? false,
-    }));
+    const models = remoteModels.map((model) =>
+      enrichModel(provider.type, {
+        id: model.id,
+        providerId: params.id,
+        modelId: model.id,
+        name: model.name,
+        enabled: enabledByModelId.get(model.id) ?? false,
+        createdAt: new Date().toISOString(),
+      })
+    );
 
     return NextResponse.json(models);
   } catch (error) {

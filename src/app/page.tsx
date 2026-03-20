@@ -1,35 +1,61 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Spin, Tag, Typography, message } from 'antd';
+import { Alert, Button, Spin, message } from 'antd';
 import {
+  BulbOutlined,
   HistoryOutlined,
+  MoonOutlined,
+  PlusOutlined,
   RobotOutlined,
+  SunOutlined,
   SettingOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
-import ModelSelector from '@/components/chat/ModelSelector';
-import InstructionSelector from '@/components/chat/InstructionSelector';
 import DocumentIndicator from '@/components/chat/DocumentIndicator';
-import { relativeTime } from '@/lib/utils';
+import {
+  executeOfficeExecutionPlan,
+  extractOfficeExecutionPlan,
+  shouldConfirmOfficeExecution,
+  summarizeOfficeExecution,
+} from '@/lib/office/agent-executor';
 import type {
+  AutoTuneOverrides,
   ChatMessage as ChatMessageType,
   ChatMode,
   ChatSession,
   Model,
+  ModelOptimizationGoal,
+  ModelTaskIntent,
   Provider,
   UserInstruction,
 } from '@/types';
-
-const { Title, Text } = Typography;
 
 interface DocumentInfo {
   type: string;
   name: string;
   content: string;
+}
+
+interface LocalPreferences {
+  defaultMode?: ChatMode;
+  confirmAgentActions?: boolean;
+  rememberDocumentContext?: boolean;
+  optimizationGoal?: ModelOptimizationGoal;
+  taskIntent?: ModelTaskIntent;
+  manualTemperatureOverride?: number;
+  manualMaxTokensOverride?: number;
+}
+
+function getStoredPreferences(): LocalPreferences {
+  try {
+    const raw = window.localStorage.getItem('workspace-preferences');
+    return raw ? (JSON.parse(raw) as LocalPreferences) : {};
+  } catch {
+    return {};
+  }
 }
 
 export default function ChatPage() {
@@ -41,10 +67,14 @@ export default function ChatPage() {
   const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [activeInstructionIds, setActiveInstructionIds] = useState<string[]>([]);
+  const [optimizationGoal, setOptimizationGoal] = useState<ModelOptimizationGoal>('balanced');
+  const [taskIntent, setTaskIntent] = useState<ModelTaskIntent>('general');
+  const [manualOverrides, setManualOverrides] = useState<AutoTuneOverrides>({});
   const [loading, setLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const [documentInfo, setDocumentInfo] = useState<DocumentInfo | null>(null);
+  const [isDark, setIsDark] = useState(true);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +89,38 @@ export default function ChatPage() {
       el.scrollTop = el.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem('workspace-theme');
+    const preferredDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const nextDark = savedTheme ? savedTheme === 'dark' : preferredDark;
+    setIsDark(nextDark);
+    document.documentElement.classList.toggle('dark', nextDark);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setIsDark((prev) => {
+      const next = !prev;
+      document.documentElement.classList.toggle('dark', next);
+      window.localStorage.setItem('workspace-theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }, []);
+
+  const getPreferredModelId = useCallback(
+    (provider: Provider | undefined, availableModels: Model[]) => {
+      if (selectedModelId && availableModels.some((model) => model.id === selectedModelId)) {
+        return selectedModelId;
+      }
+
+      const providerDefault = provider?.defaultModel
+        ? availableModels.find((model) => model.modelId === provider.defaultModel)
+        : null;
+
+      return providerDefault?.id ?? availableModels[0]?.id ?? '';
+    },
+    [selectedModelId]
+  );
 
   const refreshWorkspace = useCallback(async () => {
     const [providersRes, modelsRes, instructionsRes] = await Promise.all([
@@ -80,25 +142,76 @@ export default function ChatPage() {
       instructionsData.filter((instruction) => instruction.enabled).map((instruction) => instruction.id)
     );
 
-    const enabledProvider = providersData.find((provider) => provider.enabled);
-    const nextProviderId =
-      selectedProviderId &&
-      providersData.some((provider) => provider.id === selectedProviderId && provider.enabled)
-        ? selectedProviderId
-        : enabledProvider?.id ?? '';
+    const enabledProviders = providersData.filter((provider) => provider.enabled);
+    const activeProvider =
+      (selectedProviderId
+        ? enabledProviders.find((provider) => provider.id === selectedProviderId)
+        : null) ?? enabledProviders[0];
 
+    const nextProviderId = activeProvider?.id ?? '';
     setSelectedProviderId(nextProviderId);
 
     const providerModels = modelsData.filter(
       (model) => model.providerId === nextProviderId && model.enabled
     );
-    const nextModelId =
-      selectedModelId && providerModels.some((model) => model.id === selectedModelId)
-        ? selectedModelId
-        : providerModels[0]?.id ?? '';
+    setSelectedModelId(getPreferredModelId(activeProvider, providerModels));
+  }, [getPreferredModelId, selectedProviderId]);
 
-    setSelectedModelId(nextModelId);
-  }, [selectedModelId, selectedProviderId]);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('workspace-preferences');
+      if (!raw) return;
+      const preferences = JSON.parse(raw) as LocalPreferences;
+      if (preferences.defaultMode) {
+        setSelectedMode(preferences.defaultMode);
+      }
+      if (preferences.optimizationGoal) {
+        setOptimizationGoal(preferences.optimizationGoal);
+      }
+      if (preferences.taskIntent) {
+        setTaskIntent(preferences.taskIntent);
+      }
+
+      setManualOverrides({
+        temperature:
+          typeof preferences.manualTemperatureOverride === 'number'
+            ? preferences.manualTemperatureOverride
+            : undefined,
+        maxTokens:
+          typeof preferences.manualMaxTokensOverride === 'number'
+            ? preferences.manualMaxTokensOverride
+            : undefined,
+      });
+    } catch {
+      // ignore invalid local settings
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('workspace-preferences');
+      const existing = raw ? (JSON.parse(raw) as LocalPreferences) : {};
+
+      const next: LocalPreferences = {
+        ...existing,
+        defaultMode: selectedMode,
+        optimizationGoal,
+        taskIntent,
+        manualTemperatureOverride:
+          typeof manualOverrides.temperature === 'number'
+            ? manualOverrides.temperature
+            : undefined,
+        manualMaxTokensOverride:
+          typeof manualOverrides.maxTokens === 'number'
+            ? manualOverrides.maxTokens
+            : undefined,
+      };
+
+      window.localStorage.setItem('workspace-preferences', JSON.stringify(next));
+    } catch {
+      // ignore local storage errors
+    }
+  }, [manualOverrides.maxTokens, manualOverrides.temperature, optimizationGoal, selectedMode, taskIntent]);
 
   useEffect(() => {
     async function init() {
@@ -173,18 +286,24 @@ export default function ChatPage() {
   const handleProviderChange = useCallback(
     (providerId: string) => {
       setSelectedProviderId(providerId);
-      const providerModel = models.find(
+      const provider = providers.find((item) => item.id === providerId);
+      const providerModels = models.filter(
         (model) => model.providerId === providerId && model.enabled
       );
-      setSelectedModelId(providerModel?.id ?? '');
+      setSelectedModelId(getPreferredModelId(provider, providerModels));
     },
-    [models]
+    [getPreferredModelId, models, providers]
   );
 
   const handleInstructionToggle = useCallback((id: string) => {
     setActiveInstructionIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
+  }, []);
+
+  const startNewChat = useCallback(() => {
+    setMessages([]);
+    setCurrentSession(null);
   }, []);
 
   const sendMessage = useCallback(
@@ -196,6 +315,21 @@ export default function ChatPage() {
 
       setLoading(true);
       let session = currentSession;
+      let assistantMessageId: string | null = null;
+      const preferences = getStoredPreferences();
+      const shouldRememberDocumentContext = preferences.rememberDocumentContext !== false;
+      const shouldConfirmAgentActions = preferences.confirmAgentActions !== false;
+      let activeDocumentInfo = documentInfo;
+
+      if (!shouldRememberDocumentContext) {
+        try {
+          const { getDocumentInfo } = await import('@/lib/office/context');
+          activeDocumentInfo = await getDocumentInfo();
+          setDocumentInfo(activeDocumentInfo);
+        } catch {
+          activeDocumentInfo = documentInfo;
+        }
+      }
 
       const optimisticUserMessage: ChatMessageType = {
         id: `temp-${Date.now()}`,
@@ -211,22 +345,28 @@ export default function ChatPage() {
 
       try {
         session = await ensureSession(selectedProviderId, selectedModelId, selectedMode);
+        const sessionId = session.id;
 
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sessionId: session.id,
+            sessionId,
             content,
             mode: selectedMode,
             providerId: selectedProviderId,
             modelId: selectedModelId,
             instructionIds: activeInstructionIds,
-            documentContext: documentInfo
+            autoTune: {
+              optimizationGoal,
+              taskIntent,
+              overrides: manualOverrides,
+            },
+            documentContext: activeDocumentInfo
               ? {
-                  type: documentInfo.type,
-                  name: documentInfo.name,
-                  content: documentInfo.content,
+                  type: activeDocumentInfo.type,
+                  name: activeDocumentInfo.name,
+                  content: activeDocumentInfo.content,
                 }
               : undefined,
           }),
@@ -242,11 +382,11 @@ export default function ChatPage() {
 
         const decoder = new TextDecoder();
         let assistantContent = '';
-        const assistantId = `assistant-${Date.now()}`;
+        assistantMessageId = `assistant-${Date.now()}`;
 
         const assistantMessage: ChatMessageType = {
-          id: assistantId,
-          sessionId: session.id,
+          id: assistantMessageId,
+          sessionId,
           role: 'assistant',
           content: '',
           mode: selectedMode,
@@ -283,7 +423,7 @@ export default function ChatPage() {
               assistantContent += chunk;
               setMessages((prev) =>
                 prev.map((item) =>
-                  item.id === assistantId ? { ...item, content: assistantContent } : item
+                  item.id === assistantMessageId ? { ...item, content: assistantContent } : item
                 )
               );
             } catch (error) {
@@ -293,8 +433,92 @@ export default function ChatPage() {
             }
           }
         }
+
+        const { displayContent, plan } = extractOfficeExecutionPlan(assistantContent);
+
+        if (assistantMessageId && displayContent !== assistantContent) {
+          setMessages((prev) =>
+            prev.map((item) =>
+              item.id === assistantMessageId ? { ...item, content: displayContent } : item
+            )
+          );
+        }
+
+        if (selectedMode === 'agent' && plan && session) {
+          const requiresConfirmation = shouldConfirmAgentActions || shouldConfirmOfficeExecution(plan);
+          const confirmed =
+            !requiresConfirmation ||
+            window.confirm(
+              `${plan.summary}\n\nApply ${plan.operations.length} document operation${
+                plan.operations.length === 1 ? '' : 's'
+              } now?`
+            );
+
+          if (!confirmed) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `system-${Date.now()}`,
+                sessionId,
+                role: 'system',
+                content: 'Document changes were prepared but not applied.',
+                mode: selectedMode,
+                modelId: selectedModelId,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+            return;
+          }
+
+          const executionResults = await executeOfficeExecutionPlan(plan);
+          const summary = summarizeOfficeExecution(executionResults);
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `system-${Date.now() + 1}`,
+              sessionId,
+              role: 'system',
+              content: summary,
+              mode: selectedMode,
+              modelId: selectedModelId,
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+
+          const successfulEntries = executionResults.filter((item) => item.success);
+          if (successfulEntries.length > 0) {
+            await fetch('/api/changelog', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                entries: successfulEntries.map((item) => ({
+                  sessionId,
+                  documentName: activeDocumentInfo?.name || 'Untitled document',
+                  operationType: item.operationType,
+                  oldValue: item.oldValue,
+                  newValue: item.newValue,
+                  description: item.description,
+                  modelId: selectedModelId,
+                })),
+              }),
+            }).catch(() => undefined);
+
+            try {
+              const { getDocumentInfo } = await import('@/lib/office/context');
+              const nextDocumentInfo = await getDocumentInfo();
+              setDocumentInfo(nextDocumentInfo);
+            } catch {
+              // Ignore refresh failures after applying operations.
+            }
+          }
+        }
       } catch (err: unknown) {
-        setMessages((prev) => prev.filter((item) => item.id !== optimisticUserMessage.id));
+        setMessages((prev) =>
+          prev.filter(
+            (item) => item.id !== optimisticUserMessage.id && item.id !== assistantMessageId
+          )
+        );
         message.error(err instanceof Error ? err.message : 'Failed to send message');
       } finally {
         setLoading(false);
@@ -305,120 +529,136 @@ export default function ChatPage() {
       currentSession,
       documentInfo,
       ensureSession,
+      manualOverrides,
+      optimizationGoal,
       selectedMode,
       selectedModelId,
       selectedProviderId,
+      taskIntent,
     ]
   );
 
   const inputDisabled =
     bootstrapping || !selectedProviderId || !selectedModelId || filteredModels.length === 0;
 
+  const quickPrompts = [
+    'Summarize the current document and highlight key risks.',
+    'Turn this content into an executive-ready outline.',
+    'Review the document and propose the next best actions.',
+  ];
+
   return (
-    <div className="task-pane app-shell">
-      <div className="px-3 pb-3 pt-3">
-        <div className="panel-card rounded-[28px] px-4 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                Microsoft Office add-in
-              </div>
-              <Title level={4} className="!mb-1 !mt-1 !text-slate-900">
-                Friendly AI workspace
-              </Title>
-              <Text className="!text-sm !text-slate-500">
-                Ask questions, inspect content, or switch to agent mode when you are ready to edit.
-              </Text>
-            </div>
-            <div className="flex gap-2">
-              <Link href="/settings">
-                <Button icon={<SettingOutlined />}>Settings</Button>
-              </Link>
-              <Link href="/history">
-                <Button icon={<HistoryOutlined />}>History</Button>
-              </Link>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <Card size="small" className="soft-card !bg-white/70">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Mode</div>
-              <div className="mt-2 flex items-center gap-2">
-                <Tag color={selectedMode === 'ask' ? 'blue' : 'orange'} className="!m-0">
-                  {selectedMode === 'ask' ? 'Ask' : 'Agent'}
-                </Tag>
-                <span className="text-xs text-slate-500">
-                  {selectedMode === 'ask' ? 'Read-only guidance' : 'Document-aware editing'}
-                </span>
-              </div>
-            </Card>
-            <Card size="small" className="soft-card !bg-white/70">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                Session
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                <ThunderboltOutlined className="text-amber-500" />
-                {currentSession
-                  ? `Active · ${relativeTime(currentSession.updatedAt)}`
-                  : 'New session starts on first message'}
-              </div>
-            </Card>
-          </div>
-
-          <div className="mt-3">
+    <div className="task-pane app-shell app-surface h-screen flex flex-col">
+      <div className="page-header py-3 px-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <span className="font-semibold text-sm">Agent Chat</span>
             <DocumentIndicator documentInfo={documentInfo} />
+            {activeInstructionIds.length > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-[11px] text-slate-500 dark:text-slate-300">
+                <BulbOutlined />
+                {activeInstructionIds.length}
+              </span>
+            ) : null}
           </div>
-          <div className="mt-3">
-            <ModelSelector
-              models={models}
-              providers={providers}
-              selectedModelId={selectedModelId}
-              selectedMode={selectedMode}
-              selectedProviderId={selectedProviderId}
-              onModelChange={setSelectedModelId}
-              onModeChange={setSelectedMode}
-              onProviderChange={handleProviderChange}
+
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Button
+              type="text"
+              aria-label="Start new chat"
+              icon={<PlusOutlined />}
+              onClick={startNewChat}
+            >
+              <span className="hidden sm:inline">New chat</span>
+            </Button>
+            <Button
+              type="text"
+              aria-label="Toggle theme"
+              icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+              onClick={toggleTheme}
             />
-          </div>
-          <div className="mt-3">
-            <InstructionSelector
-              instructions={instructions}
-              activeIds={activeInstructionIds}
-              onToggle={handleInstructionToggle}
-            />
+            <Link href="/history">
+              <Button type="text" icon={<HistoryOutlined />} />
+            </Link>
+            <Link href="/settings">
+              <Button type="text" icon={<SettingOutlined />} />
+            </Link>
           </div>
         </div>
       </div>
 
-      <div ref={chatScrollRef} className="flex-1 overflow-y-auto chat-scroll px-3 pb-3">
-        <div className="soft-card min-h-full rounded-[28px] bg-white/60 px-3 py-3 backdrop-blur">
+      <div className="flex-1 flex flex-col min-h-0">
+        <div ref={chatScrollRef} className="flex-1 overflow-y-auto w-full px-4 py-6 chat-scroll">
           {bootstrapping ? (
-            <div className="flex min-h-[240px] items-center justify-center">
-              <Spin />
+            <div className="flex min-h-full items-center justify-center">
+              <Spin size="large" />
             </div>
           ) : inputDisabled ? (
-            <Alert
-              type="info"
-              showIcon
-              message="Open Settings, connect a provider, fetch its models, and mark at least one model as visible."
-            />
+            <div className="flex min-h-full items-center justify-center">
+              <Alert
+                type="info"
+                showIcon
+                message="Open Settings, connect a provider, fetch models, and enable at least one model to start chatting."
+              />
+            </div>
           ) : messages.length === 0 ? (
-            <div className="flex min-h-[240px] flex-col items-center justify-center text-center">
-              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-2xl text-blue-500">
+            <div className="flex h-full flex-col items-center justify-center text-center px-4">
+              <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center text-xl mb-4">
                 <RobotOutlined />
               </div>
-              <div className="text-base font-semibold text-slate-800">Start a conversation</div>
-              <div className="mt-2 max-w-[260px] text-sm leading-6 text-slate-500">
-                Ask for summaries, inspect formulas, build outlines, or switch to agent mode when you want guided edits.
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">How can I help you today?</h2>
+              <div className="mt-8 grid w-full max-w-2xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {quickPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    className="p-3 text-left border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    onClick={() => sendMessage(prompt)}
+                  >
+                    <div className="text-sm text-slate-700 dark:text-slate-300 line-clamp-3">{prompt}</div>
+                  </button>
+                ))}
               </div>
             </div>
           ) : (
-            messages.map((item) => <ChatMessage key={item.id} message={item} />)
+            <div className="message-thread w-full pb-2">
+              {messages.map((item) => (
+                <ChatMessage key={item.id} message={item} />
+              ))}
+            </div>
           )}
         </div>
-      </div>
 
-      <ChatInput onSend={sendMessage} loading={loading} disabled={inputDisabled} />
+        <div className="w-full px-3 sm:px-4 pb-3 sm:pb-4 pt-2 sm:pt-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+          <div className="w-full">
+            <ChatInput
+              onSend={sendMessage}
+              loading={loading}
+              disabled={inputDisabled}
+              features={{
+                selectedModelId,
+                selectedMode,
+                selectedProviderId,
+                optimizationGoal,
+                taskIntent,
+                manualOverrides,
+                instructions,
+                activeInstructionIds,
+              }}
+              handlers={{
+                setSelectedModelId,
+                setSelectedMode,
+                handleProviderChange,
+                setOptimizationGoal,
+                setTaskIntent,
+                handleInstructionToggle,
+              }}
+              models={models}
+              providers={providers}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

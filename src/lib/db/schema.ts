@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS providers (
   api_key TEXT NOT NULL DEFAULT '',
   api_base_url TEXT NOT NULL DEFAULT '',
   default_model TEXT NOT NULL DEFAULT '',
+  auto_parameters INTEGER NOT NULL DEFAULT 0,
   timeout INTEGER NOT NULL DEFAULT 30000,
   retry_count INTEGER NOT NULL DEFAULT 3,
   max_tokens INTEGER NOT NULL DEFAULT 4096,

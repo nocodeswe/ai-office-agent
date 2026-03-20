@@ -24,6 +24,7 @@ interface ProviderRow {
   api_key: string;
   api_base_url: string;
   default_model: string;
+  auto_parameters: number;
   timeout: number;
   retry_count: number;
   max_tokens: number;
@@ -41,6 +42,7 @@ function toProvider(row: ProviderRow): Provider {
     apiKey: row.api_key,
     apiBaseUrl: row.api_base_url,
     defaultModel: row.default_model,
+    autoParameters: row.auto_parameters === 1,
     timeout: row.timeout,
     retryCount: row.retry_count,
     maxTokens: row.max_tokens,
@@ -189,6 +191,7 @@ export function createProvider(data: {
   apiKey?: string;
   apiBaseUrl?: string;
   defaultModel?: string;
+  autoParameters?: boolean;
   timeout?: number;
   retryCount?: number;
   maxTokens?: number;
@@ -199,8 +202,8 @@ export function createProvider(data: {
 
   getDb()
     .prepare(
-      `INSERT INTO providers (id, name, type, enabled, api_key, api_base_url, default_model, timeout, retry_count, max_tokens, temperature, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO providers (id, name, type, enabled, api_key, api_base_url, default_model, auto_parameters, timeout, retry_count, max_tokens, temperature, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -210,6 +213,7 @@ export function createProvider(data: {
       data.apiKey ?? '',
       data.apiBaseUrl ?? '',
       data.defaultModel ?? '',
+      data.autoParameters ? 1 : 0,
       data.timeout ?? 30000,
       data.retryCount ?? 3,
       data.maxTokens ?? 4096,
@@ -237,6 +241,7 @@ export function updateProvider(
   if (data.apiKey !== undefined) { fields.push('api_key = ?'); values.push(data.apiKey); }
   if (data.apiBaseUrl !== undefined) { fields.push('api_base_url = ?'); values.push(data.apiBaseUrl); }
   if (data.defaultModel !== undefined) { fields.push('default_model = ?'); values.push(data.defaultModel); }
+  if (data.autoParameters !== undefined) { fields.push('auto_parameters = ?'); values.push(data.autoParameters ? 1 : 0); }
   if (data.timeout !== undefined) { fields.push('timeout = ?'); values.push(data.timeout); }
   if (data.retryCount !== undefined) { fields.push('retry_count = ?'); values.push(data.retryCount); }
   if (data.maxTokens !== undefined) { fields.push('max_tokens = ?'); values.push(data.maxTokens); }

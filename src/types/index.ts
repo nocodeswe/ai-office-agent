@@ -8,6 +8,7 @@ export interface Provider {
   apiKey: string;
   apiBaseUrl: string;
   defaultModel: string;
+  autoParameters: boolean;
   timeout: number;
   retryCount: number;
   maxTokens: number;
@@ -16,12 +17,34 @@ export interface Provider {
   updatedAt: string;
 }
 
+export interface RecommendedModelParameters {
+  temperature: number;
+  maxTokens: number;
+  note: string;
+}
+
+export type ModelOptimizationGoal = 'speed' | 'balanced' | 'quality';
+export type ModelTaskIntent = 'general' | 'analysis' | 'writing' | 'coding';
+
+export interface AutoTuneOverrides {
+  temperature?: number;
+  maxTokens?: number;
+}
+
 export interface Model {
   id: string;
   providerId: string;
   modelId: string;
   name: string;
   enabled: boolean;
+  family?: string;
+  description?: string;
+  profile?: 'Fast' | 'Balanced' | 'Deep';
+  contextWindow?: string;
+  capabilities?: string[];
+  limitations?: string[];
+  bestFor?: string[];
+  recommendedParameters?: RecommendedModelParameters;
   createdAt: string;
 }
 

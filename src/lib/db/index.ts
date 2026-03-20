@@ -5,6 +5,23 @@ import { SCHEMA } from './schema';
 
 let db: Database.Database | null = null;
 
+function ensureColumn(
+  database: Database.Database,
+  tableName: string,
+  columnName: string,
+  definition: string
+): void {
+  const columns = database
+    .prepare(`PRAGMA table_info(${tableName})`)
+    .all() as Array<{ name: string }>;
+
+  if (columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
 export function getDb(): Database.Database {
   if (db) return db;
 
@@ -18,6 +35,7 @@ export function getDb(): Database.Database {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     db.exec(SCHEMA);
+    ensureColumn(db, 'providers', 'auto_parameters', 'INTEGER NOT NULL DEFAULT 0');
 
     return db;
   } catch (error) {

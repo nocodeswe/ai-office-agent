@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Typography, Button, Spin } from 'antd';
+import { useState, useEffect, useCallback } from 'react';
+import { Typography, Button, Spin, App, Card } from 'antd';
 import { ArrowLeftOutlined, HistoryOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import type { ChatSession } from '@/types';
@@ -12,6 +12,7 @@ const { Title } = Typography;
 
 export default function HistoryPage() {
   const router = useRouter();
+  const { message } = App.useApp();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,14 +21,17 @@ export default function HistoryPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/sessions');
+      if (!res.ok) {
+        throw new Error('Failed to load history');
+      }
       const data = await res.json();
       setSessions(Array.isArray(data) ? data : data.sessions ?? []);
-    } catch {
-      // silently handle
+    } catch (error: any) {
+      message.error(error?.message || 'Failed to load history');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [message]);
 
   useEffect(() => {
     fetchSessions();
@@ -35,62 +39,51 @@ export default function HistoryPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        throw new Error('Failed to delete session');
+      }
       await fetchSessions();
-    } catch {
-      // silently handle
+    } catch (error: any) {
+      message.error(error?.message || 'Failed to delete session');
     }
   };
 
   if (selectedSessionId) {
     return (
-      <div className="task-pane app-shell">
-        <SessionDetail
-          sessionId={selectedSessionId}
-          onBack={() => setSelectedSessionId(null)}
-        />
+      <div className="task-pane app-shell app-surface">
+        <SessionDetail sessionId={selectedSessionId} onBack={() => setSelectedSessionId(null)} />
       </div>
     );
   }
 
   return (
-    <div className="task-pane app-shell">
-      <div className="px-3 pb-3 pt-3">
-        <div className="panel-card flex items-start gap-3 rounded-[24px] px-4 py-4">
-          <Button
-            type="default"
-            shape="circle"
-            icon={<ArrowLeftOutlined />}
-            onClick={() => router.push('/')}
-          />
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-              Workspace
-            </div>
-            <Title level={4} className="!mb-1 !mt-1">
-              History
+    <div className="task-pane app-shell app-surface">
+      <div className="page-header">
+        <div className="flex items-start gap-3">
+          <Button icon={<ArrowLeftOutlined />} onClick={() => router.push('/')} />
+          <div>
+            <div className="page-header__eyebrow">History</div>
+            <Title level={4} className="!mb-1 !mt-1 !text-slate-50">
+              Session archive
             </Title>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
+            <div className="page-header__subtitle flex items-center gap-2">
               <HistoryOutlined />
-              Review past chats, messages, and change logs.
+              Review past chats, decisions, and recorded changes.
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
         {loading ? (
-          <div className="soft-card flex h-32 items-center justify-center rounded-[24px] bg-white/70">
-            <Spin />
+          <div className="chat-stage items-center justify-center">
+            <Spin size="large" />
           </div>
         ) : (
-          <div className="soft-card overflow-hidden rounded-[24px] bg-white/70">
-            <SessionList
-              sessions={sessions}
-              onSelect={setSelectedSessionId}
-              onDelete={handleDelete}
-            />
-          </div>
+          <Card size="small" className="soft-card">
+            <SessionList sessions={sessions} onSelect={setSelectedSessionId} onDelete={handleDelete} />
+          </Card>
         )}
       </div>
     </div>

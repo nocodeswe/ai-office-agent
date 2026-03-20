@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Collapse, Switch, Tag } from 'antd';
+import { Tag } from 'antd';
+import { BulbOutlined } from '@ant-design/icons';
 import type { UserInstruction } from '@/types';
 
 interface InstructionSelectorProps {
@@ -18,47 +19,48 @@ export default function InstructionSelector({
   if (!instructions.length) return null;
 
   return (
-    <div>
-      <Collapse
-        size="middle"
-        bordered={false}
-        className="rounded-[20px] bg-white/80 shadow-sm ring-1 ring-black/5"
-        items={[
-          {
-            key: 'instructions',
-            label: (
-              <div className="flex items-center justify-between gap-2 pr-2">
-                <span className="text-xs font-medium text-slate-700">
-                  Prompt instructions
-                </span>
-                <Tag color="purple" className="!m-0">
-                  {activeIds.length}/{instructions.length} active
+    <div className="control-surface py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-100">
+          <BulbOutlined className="text-amber-300" />
+          Prompt layers
+        </div>
+        <Tag color="purple" className="!m-0">
+          {activeIds.length}/{instructions.length} active
+        </Tag>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {instructions.map((instruction) => {
+          const active = activeIds.includes(instruction.id);
+
+          return (
+            <button
+              key={instruction.id}
+              type="button"
+              onClick={() => onToggle(instruction.id)}
+              className={`model-card model-card--interactive min-w-0 flex-1 text-left ${
+                active ? 'model-card--active' : ''
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-100">
+                    {instruction.title}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-slate-400">
+                    Scope: {instruction.scope}
+                    {instruction.scopeValue ? ` · ${instruction.scopeValue}` : ''}
+                  </div>
+                </div>
+                <Tag color={active ? 'blue' : 'default'} className="!m-0">
+                  {active ? 'On' : 'Off'}
                 </Tag>
               </div>
-            ),
-            children: (
-              <div className="flex flex-col gap-2">
-                {instructions.map((inst) => (
-                  <div
-                    key={inst.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-slate-700" title={inst.title}>
-                        {inst.title}
-                      </div>
-                      <div className="truncate text-xs text-slate-400">
-                        scope: {inst.scope}{inst.scopeValue ? ` · ${inst.scopeValue}` : ''}
-                      </div>
-                    </div>
-                    <Switch size="small" checked={activeIds.includes(inst.id)} onChange={() => onToggle(inst.id)} />
-                  </div>
-                ))}
-              </div>
-            ),
-          },
-        ]}
-      />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

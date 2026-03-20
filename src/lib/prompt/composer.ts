@@ -5,6 +5,50 @@ export interface PromptContext {
   messages: Array<{ role: string; content: string }>;
 }
 
+function buildAgentToolInstructions(documentType?: string): string {
+  const shared = `\n--- Document Action Protocol ---
+When the user wants document changes, append exactly one fenced code block tagged office-plan.
+The block must contain valid JSON with this shape:
+\`\`\`office-plan
+{
+  "summary": "Short summary of intended edits",
+  "requiresConfirmation": false,
+  "operations": []
+}
+\`\`\`
+Only include operations that match the current document host. Keep your normal human-readable answer outside the code block.
+If no document edit is needed, omit the office-plan block entirely.
+Do not claim edits were already applied. The client executes the plan after your response.`;
+
+  if (documentType === 'word') {
+    return `${shared}
+Available Word operations:
+- word.insert_text: { "type": "word.insert_text", "text": "...", "location": "start|end|replace" }
+- word.insert_paragraph: { "type": "word.insert_paragraph", "text": "...", "location": "start|end" }
+- word.replace_selection: { "type": "word.replace_selection", "text": "..." }
+- word.delete_selection: { "type": "word.delete_selection" }
+- word.search_replace: { "type": "word.search_replace", "search": "...", "replace": "..." }
+- word.select_text: { "type": "word.select_text", "search": "anchor text" }
+- word.format_selection: { "type": "word.format_selection", "format": { "bold": true, "italic": false, "underline": false, "fontSize": 14, "fontColor": "#0f172a", "highlightColor": "#fef08a" } }
+- word.apply_style: { "type": "word.apply_style", "style": "normal|heading1|heading2|title|quote|emphasis" }`;
+  }
+
+  if (documentType === 'excel') {
+    return `${shared}
+Available Excel operations:
+- excel.set_active_sheet: { "type": "excel.set_active_sheet", "sheetName": "Sheet1" }
+- excel.read_range: { "type": "excel.read_range", "sheetName": "Sheet1", "range": "A1:C10" }
+- excel.write_range: { "type": "excel.write_range", "sheetName": "Sheet1", "startCell": "A1", "data": [["Header", 123]] }
+- excel.clear_range: { "type": "excel.clear_range", "sheetName": "Sheet1", "range": "B2:D20" }
+- excel.insert_formula: { "type": "excel.insert_formula", "sheetName": "Sheet1", "cell": "E2", "formula": "=SUM(B2:D2)" }
+- excel.format_range: { "type": "excel.format_range", "sheetName": "Sheet1", "range": "A1:E1", "format": { "bold": true, "fontColor": "#0f172a", "fillColor": "#dbeafe", "horizontalAlignment": "Center" } }
+- excel.autofit_range: { "type": "excel.autofit_range", "sheetName": "Sheet1", "range": "A:E" }`;
+  }
+
+  return `${shared}
+There are no direct editing tools for the current host. Provide analysis or instructions only.`;
+}
+
 export function composeSystemPrompt(ctx: PromptContext): string {
   const parts: string[] = [];
 
@@ -21,6 +65,7 @@ When the user asks you to make changes, describe what changes you will make clea
 For each change, specify the exact operation (insert, replace, delete, format, etc.).
 Always confirm destructive operations before proceeding.
 Log all changes you make for audit purposes.`);
+    parts.push(buildAgentToolInstructions(ctx.documentContext?.type));
   }
 
   // User instructions

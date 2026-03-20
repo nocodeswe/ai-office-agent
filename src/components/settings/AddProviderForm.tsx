@@ -2,36 +2,28 @@
 
 import { useState } from 'react';
 import {
+  Card,
   Form,
   Input,
   Select,
   Button,
-  Card,
   App,
   InputNumber,
   Switch,
   Typography,
+  Slider,
+  Tag,
 } from 'antd';
 import { PlusOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import type { ProviderType } from '@/types';
+import { PROVIDER_PRESETS, getProviderPreset } from '@/lib/model-catalog';
 
 const { Text } = Typography;
 
-const defaultBaseUrls: Record<ProviderType, string> = {
-  openai: 'https://api.openai.com/v1',
-  claude: 'https://api.anthropic.com/v1',
-  gemini: 'https://generativelanguage.googleapis.com/v1beta',
-  ollama: 'http://localhost:11434',
-  nvidia: 'https://integrate.api.nvidia.com/v1',
-};
-
-const providerTypes: { label: string; value: ProviderType }[] = [
-  { label: 'OpenAI', value: 'openai' },
-  { label: 'Claude', value: 'claude' },
-  { label: 'Gemini', value: 'gemini' },
-  { label: 'Ollama', value: 'ollama' },
-  { label: 'NVIDIA', value: 'nvidia' },
-];
+const providerTypes = (Object.keys(PROVIDER_PRESETS) as ProviderType[]).map((type) => ({
+  value: type,
+  label: PROVIDER_PRESETS[type].label,
+}));
 
 interface AddProviderFormProps {
   onAdded: () => void;
@@ -42,6 +34,8 @@ export default function AddProviderForm({ onAdded }: AddProviderFormProps) {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const selectedType = Form.useWatch('type', form) as ProviderType | undefined;
+  const selectedTemperature = (Form.useWatch('temperature', form) as number | undefined) ?? 0.3;
+  const preset = selectedType ? getProviderPreset(selectedType) : null;
 
   const handleSubmit = async () => {
     try {
@@ -49,7 +43,7 @@ export default function AddProviderForm({ onAdded }: AddProviderFormProps) {
       setSubmitting(true);
       const payload = {
         ...values,
-        apiBaseUrl: values.apiBaseUrl || defaultBaseUrls[values.type as ProviderType],
+        apiBaseUrl: values.apiBaseUrl || (values.type ? getProviderPreset(values.type).baseUrl : ''),
       };
       const res = await fetch('/api/providers', {
         method: 'POST',
@@ -61,7 +55,7 @@ export default function AddProviderForm({ onAdded }: AddProviderFormProps) {
       form.resetFields();
       onAdded();
     } catch (err: any) {
-      if (err?.errorFields) return; // validation error
+      if (err?.errorFields) return;
       message.error(err?.message || 'Failed to add provider');
     } finally {
       setSubmitting(false);
@@ -69,57 +63,66 @@ export default function AddProviderForm({ onAdded }: AddProviderFormProps) {
   };
 
   return (
-    <Card size="small" title="Add Provider" className="mb-3">
-      <div className="mb-3 rounded-2xl bg-slate-50 px-3 py-2">
+    <Card size="small" className="soft-card" title="Add provider">
+      <div className="provider-preset mb-4">
         <div className="flex items-start gap-2">
-          <SafetyCertificateOutlined className="mt-1 text-emerald-500" />
+          <SafetyCertificateOutlined className="mt-1 text-emerald-400" />
           <div>
-            <div className="text-sm font-medium text-slate-800">Quick setup</div>
-            <Text className="!text-xs !text-slate-500">
-              Add a provider, verify connectivity, then fetch models and choose which ones appear in chat.
+            <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Quick connection flow</div>
+            <Text className="!text-xs !text-slate-600 dark:!text-slate-400">
+              Connect a provider, fetch models, pick the ones that should appear in chat, and optionally let the app tune parameters automatically.
             </Text>
           </div>
         </div>
       </div>
+
       <Form
         form={form}
         layout="vertical"
         size="small"
         initialValues={{
           enabled: true,
+          autoParameters: true,
           timeout: 30000,
           retryCount: 3,
           maxTokens: 4096,
-          temperature: 0.7,
+          temperature: 0.3,
         }}
-        className="[&_.ant-form-item]:mb-2"
+        className="[&_.ant-form-item]:mb-3"
       >
         <Form.Item
           label="Name"
           name="name"
           rules={[{ required: true, message: 'Name is required' }]}
         >
-          <Input placeholder="My Provider" />
+          <Input placeholder="Team workspace / Personal OpenAI" />
         </Form.Item>
 
         <Form.Item
-          label="Type"
+          label="Provider type"
           name="type"
           rules={[{ required: true, message: 'Type is required' }]}
         >
-          <Select
-            placeholder="Select type"
-            options={providerTypes}
-            onChange={() => form.setFieldsValue({ apiBaseUrl: undefined })}
-          />
+          <Select placeholder="Select provider" options={providerTypes} />
         </Form.Item>
 
+        {preset ? (
+          <div className="provider-preset mb-4">
+            <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{preset.label}</div>
+            <div className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{preset.description}</div>
+            <div className="mt-3 inline-chip-row">
+              {preset.strengths.map((strength) => (
+                <Tag key={strength} className="!m-0" color="blue">
+                  {strength}
+                </Tag>
+              ))}
+            </div>
+            <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">{preset.setupHint}</div>
+          </div>
+        ) : null}
+
         <Form.Item label="API Base URL" name="apiBaseUrl">
-          <Input
-            placeholder={
-              selectedType ? defaultBaseUrls[selectedType] : 'https://...'
-            }
-          />
+          <Input placeholder={preset?.baseUrl || 'https://...'} />
         </Form.Item>
 
         <Form.Item
@@ -132,7 +135,7 @@ export default function AddProviderForm({ onAdded }: AddProviderFormProps) {
             },
           ]}
         >
-          <Input.Password placeholder="sk-..." />
+          <Input.Password placeholder={selectedType === 'ollama' ? 'Optional token' : 'sk-...'} />
         </Form.Item>
 
         <div className="grid grid-cols-2 gap-2">
@@ -144,24 +147,49 @@ export default function AddProviderForm({ onAdded }: AddProviderFormProps) {
           </Form.Item>
         </div>
 
+        <Form.Item label="Max tokens fallback" name="maxTokens">
+          <InputNumber min={256} step={256} className="w-full" />
+        </Form.Item>
+
+        <Form.Item label={`Temperature fallback · ${selectedTemperature.toFixed(1)}`} name="temperature">
+          <Slider min={0} max={2} step={0.1} />
+        </Form.Item>
+
         <div className="grid grid-cols-2 gap-2">
-          <Form.Item label="Max Tokens" name="maxTokens">
-            <InputNumber min={256} step={256} className="w-full" />
-          </Form.Item>
-          <Form.Item label="Enabled" name="enabled" valuePropName="checked">
-            <Switch size="small" />
-          </Form.Item>
+          <div className="setting-item">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Enable now</div>
+                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">Make this provider available in chat immediately.</div>
+              </div>
+              <Form.Item name="enabled" valuePropName="checked" className="!mb-0">
+                <Switch size="small" />
+              </Form.Item>
+            </div>
+          </div>
+
+          <div className="setting-item">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Auto parameters</div>
+                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">Use model-aware recommendations when available.</div>
+              </div>
+              <Form.Item name="autoParameters" valuePropName="checked" className="!mb-0">
+                <Switch size="small" />
+              </Form.Item>
+            </div>
+          </div>
         </div>
 
         <Button
           type="primary"
-          size="small"
+          size="large"
           icon={<PlusOutlined />}
           loading={submitting}
           onClick={handleSubmit}
           block
         >
-          Add Provider
+          Add provider
         </Button>
       </Form>
     </Card>

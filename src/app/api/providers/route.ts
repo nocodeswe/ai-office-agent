@@ -31,6 +31,8 @@ export async function POST(request: NextRequest) {
       type: type as ProviderType,
       apiKey: body.apiKey,
       apiBaseUrl: body.apiBaseUrl,
+      defaultModel: body.defaultModel,
+      autoParameters: body.autoParameters,
       timeout: body.timeout,
       retryCount: body.retryCount,
       maxTokens: body.maxTokens,

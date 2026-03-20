@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getProvider,
+  getAllInstructions,
   getModelsByProvider,
   getActiveInstructions,
   getMessagesBySession,
@@ -8,12 +9,22 @@ import {
 } from '@/lib/db/dal';
 import { createProvider } from '@/lib/providers';
 import { composeSystemPrompt, buildMessages } from '@/lib/prompt/composer';
-import type { ChatMode } from '@/types';
+import type { AutoTuneOverrides, ChatMode, ModelOptimizationGoal, ModelTaskIntent } from '@/types';
+import { enrichModel, getEffectiveModelParameters } from '@/lib/model-catalog';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { sessionId, content, mode, providerId, modelId, documentContext } =
+    const {
+      sessionId,
+      content,
+      mode,
+      providerId,
+      modelId,
+      instructionIds,
+      autoTune,
+      documentContext,
+    } =
       body;
 
     if (!sessionId || !content || !mode || !providerId || !modelId) {
@@ -43,7 +54,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const instructions = getActiveInstructions();
+    const instructions =
+      Array.isArray(instructionIds) && instructionIds.length > 0
+        ? getAllInstructions().filter(
+            (instruction) =>
+              instruction.enabled && instructionIds.includes(instruction.id)
+          )
+        : getActiveInstructions();
     const sessionMessages = getMessagesBySession(sessionId);
 
     createMessage({
@@ -67,6 +84,44 @@ export async function POST(request: NextRequest) {
     ]);
 
     const adapter = createProvider(provider);
+    const effectiveModel = enrichModel(provider.type, selectedModel);
+
+    const autoTuneGoal =
+      autoTune?.optimizationGoal === 'speed' ||
+      autoTune?.optimizationGoal === 'quality' ||
+      autoTune?.optimizationGoal === 'balanced'
+        ? (autoTune.optimizationGoal as ModelOptimizationGoal)
+        : 'balanced';
+    const autoTuneTaskIntent =
+      autoTune?.taskIntent === 'analysis' ||
+      autoTune?.taskIntent === 'writing' ||
+      autoTune?.taskIntent === 'coding' ||
+      autoTune?.taskIntent === 'general'
+        ? (autoTune.taskIntent as ModelTaskIntent)
+        : 'general';
+    const autoTuneOverrides: AutoTuneOverrides | undefined =
+      typeof autoTune?.overrides === 'object' && autoTune?.overrides
+        ? {
+            temperature:
+              typeof autoTune.overrides.temperature === 'number'
+                ? autoTune.overrides.temperature
+                : undefined,
+            maxTokens:
+              typeof autoTune.overrides.maxTokens === 'number'
+                ? autoTune.overrides.maxTokens
+                : undefined,
+          }
+        : undefined;
+
+    const effectiveParameters = getEffectiveModelParameters(
+      provider,
+      effectiveModel,
+      {
+        optimizationGoal: autoTuneGoal,
+        taskIntent: autoTuneTaskIntent,
+        overrides: autoTuneOverrides,
+      }
+    );
 
     let fullResponse = '';
 
@@ -77,8 +132,8 @@ export async function POST(request: NextRequest) {
           const gen = adapter.chatStream({
             messages,
             model: selectedModel.modelId,
-            maxTokens: provider.maxTokens,
-            temperature: provider.temperature,
+            maxTokens: effectiveParameters.maxTokens,
+            temperature: effectiveParameters.temperature,
             stream: true,
           });
 
